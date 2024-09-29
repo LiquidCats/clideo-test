@@ -15,7 +15,6 @@ import { ref, onMounted, reactive } from 'vue'
 import Point from '../types/Point'
 import { rotatePoint, scalePoint } from '../utils/transformations'
 import { calculateAffineTransform } from '../utils/math.ts'
-import { getMousePos } from '../utils/mouse.ts'
 
 const canvasWidth = 800
 const canvasHeight = 600
@@ -30,7 +29,8 @@ image.onload = () => {
         return
     }
     updateRotationHandle()
-    draw()
+    // Schedule a redraw
+    needsRedraw.value = true
 }
 
 image.onerror = () => {
@@ -38,21 +38,24 @@ image.onerror = () => {
     alert('Failed to load the image. Please check the image path or source.')
 }
 
-// setup
+// Reference to the canvas and its context
 const canvas = ref<HTMLCanvasElement | null>(null)
 const context = ref<CanvasRenderingContext2D | null>(null)
-const dragging = ref(false)
 
-// setup:scale
+// Flags for dragging, scaling, and rotating
+const dragging = ref(false)
 const scaling = ref(false)
+const rotating = ref(false)
+
+// Flag to indicate whether a redraw is needed
+const needsRedraw = ref(false)
+
+// Variables for scaling and rotating
 const selectedHandle = ref<number | null>(null)
 const initialMousePos = reactive<Point>({ x: 0, y: 0 })
 const initialVertices = ref<Point[]>([])
-
-// setup:rotation
 const rotationCenter = reactive<Point>({ x: 0, y: 0 }) // Center of rotation
 const initialAngle = ref(0) // Initial angle between mouse and center
-const rotating = ref(false) // New state variable for rotation
 const rotationHandle = reactive<Point>({ x: 0, y: 0 }) // Position of the rotation handle
 
 // Initialize the vertices of the box (a rectangle)
@@ -83,6 +86,15 @@ function updateRotationHandle () {
 
     rotationHandle.x = topEdgeCenter.x + handleOffset * Math.cos(angle - Math.PI / 2)
     rotationHandle.y = topEdgeCenter.y + handleOffset * Math.sin(angle - Math.PI / 2)
+}
+
+const getMousePos = (event: MouseEvent): Point =>  {
+    if (!canvas.value) return { x: 0, y: 0 }
+    const rect = canvas.value.getBoundingClientRect()
+    return {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+    }
 }
 
 // Draws the transformation box, image, handles, and rotation handle
@@ -258,7 +270,8 @@ function onMouseMove(event: MouseEvent) {
         updateRotationHandle()
     }
 
-    draw()
+    // Schedule a redraw
+    needsRedraw.value = true
 }
 
 function onMouseUp() {
@@ -268,17 +281,28 @@ function onMouseUp() {
     selectedHandle.value = null
 }
 
-// hooks
+// Animation loop using requestAnimationFrame
+function animationLoop() {
+    if (needsRedraw.value) {
+        draw()
+        needsRedraw.value = false
+    }
+    requestAnimationFrame(animationLoop)
+}
+
+// Start the animation loop and initialize the canvas
 onMounted(() => {
     if (canvas.value) {
         context.value = canvas.value.getContext('2d')
         if (image.complete) {
             updateRotationHandle()
-            draw()
+            // Schedule initial redraw
+            needsRedraw.value = true
         }
+        // Start the animation loop
+        animationLoop()
     }
 })
-
 </script>
 
 <style scoped>
